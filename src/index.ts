@@ -4,13 +4,13 @@ import { createHash } from "crypto";
 import match from "./match";
 
 declare namespace Database {
-    export interface Object<T = any> {
+    export interface Document<T = any> {
         readonly id: string;
         data: T;
     }
 
     export interface Collection<T = any> {
-        [id: string]: Database.Object<T>;
+        [id: string]: Database.Document<T>;
     }
 }
 
@@ -71,7 +71,7 @@ class Database {
             /**
              * Get all stuff
              */
-            static get data() {
+            static get data(): Database.Collection<T> {
                 return pointer.data[name];
             }
 
@@ -108,7 +108,7 @@ class Database {
              */
             async setValue(value: T) {
                 // @ts-ignore
-                this.value = value;
+                this.value = new type(value);
                 await this.save();
             }
 
@@ -133,7 +133,7 @@ class Database {
                 let res: boolean = true;
 
                 for (const key in Collection.data) {
-                    if (typeof count === "number" && count <= 0) 
+                    if (typeof count === "number" && count <= 0)
                         break;
 
                     // Try delete the object if matches
@@ -149,11 +149,11 @@ class Database {
             }
 
             /**
-             * Find by ID
+             * Select the document with the id
              * @param id 
              */
-            static findID(id: string) {
-                return Collection.data[id]?.data ?? undefined;
+            static select(id: string): Database.Document<T> {
+                return Collection.data[id];
             }
 
             /**
@@ -161,17 +161,17 @@ class Database {
              * @param o 
              * @param count 
              */
-            static find(o: any, count?: number): T[] {
+            static find(o: any, count?: number): Database.Document<T>[] {
                 const vals = [];
 
                 for (const key in Collection.data) {
                     if (typeof count === "number" && count <= 0)
                         break;
 
-                    const doc = Collection.data[key].data;
+                    const doc = Collection.data[key];
 
                     // Add to value list
-                    if (match(o, doc)) {
+                    if (match(o, doc.data)) {
                         vals.push(doc);
                         if (typeof count === "number")
                             count--;
@@ -187,6 +187,26 @@ class Database {
              */
             static findOne(o: any) {
                 return this.find(o, 1)[0];
+            }
+
+            /**
+             * Update the first matched object value with new value
+             * @param o 
+             * @param value 
+             * @param rewrite
+             */
+            static async update(o: any, value: T, rewrite?: boolean) {
+                const doc = this.findOne(o);
+
+                if (!rewrite)
+                    Object.assign(Collection.data[doc.id].data, value);
+                else
+                    Collection.data[doc.id].data = value;
+
+                // Check type
+                Collection.data[doc.id].data = new type(Collection.data[doc.id].data);
+
+                await pointer.syncFile();
             }
         }
 
