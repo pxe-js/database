@@ -1,7 +1,7 @@
 {
     "name": "@pxe/database",
     "version": "1.0.0-alpha.1",
-    "description": "Local database",
+    "description": "A simple local database for Node.js",
     "main": "index.js",
     "author": "reve-node",
     "license": "MIT",
