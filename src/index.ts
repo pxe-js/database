@@ -198,13 +198,30 @@ class Database {
             static async update(o: any, value: T, rewrite?: boolean) {
                 const doc = this.findOne(o);
 
-                if (!rewrite)
+                if (!rewrite && typeof Collection.data[doc.id].data === "object")
                     Object.assign(Collection.data[doc.id].data, value);
                 else
                     Collection.data[doc.id].data = value;
 
                 // Check type
                 Collection.data[doc.id].data = new type(Collection.data[doc.id].data);
+
+                await pointer.syncFile();
+            }
+
+            /**
+             * Update the object by a new value by its id
+             * @param id 
+             * @param rewrite 
+             */
+            static async updateID(id: string, value: T, rewrite?: boolean) {
+                if (!rewrite && typeof Collection.data[id].data === "object")
+                    Object.assign(Collection.data[id].data, value);
+                else
+                    Collection.data[id].data = value;
+
+                // Check type
+                Collection.data[id].data = new type(Collection.data[id].data);
 
                 await pointer.syncFile();
             }
