@@ -24,13 +24,11 @@ class Database {
      * @param path 
      */
     constructor(public readonly path?: string) {
+        if (!fs.existsSync(path))
+            fs.appendFileSync(path, "{}");
+
         this.data = path ? JSON.parse(fs.readFileSync(path).toString() ?? "{}") : {};
     }
-
-    /**
-     * Types for validations
-     */
-    static readonly types = valids;
 
     /**
      * Sync the data with the file
@@ -49,7 +47,9 @@ class Database {
         const type = valids.type(validator);
 
         const pointer = this;
-        pointer.data[name] = {} as Database.Collection<T>;
+
+        if (!pointer.data[name])
+            pointer.data[name] = {} as Database.Collection<T>;
 
         function hash(d: string) {
             return createHash("sha384").update(d).digest("hex");
@@ -69,18 +69,11 @@ class Database {
             }
 
             /**
-             * Get all stuff
-             */
-            static get data(): Database.Collection<T> {
-                return pointer.data[name];
-            }
-
-            /**
              * Save or resave the object to the database
              * @returns the object value
              */
             async save() {
-                Collection.data[this.id] = {
+                pointer.data[name][this.id] = {
                     id: this.id,
                     data: this.value
                 }
@@ -95,7 +88,7 @@ class Database {
              * @returns true if delete successfully
              */
             async del() {
-                const res = delete Collection.data[this.id];
+                const res = delete pointer.data[name][this.id];
 
                 await pointer.syncFile();
 
@@ -117,7 +110,7 @@ class Database {
              * @param id 
              */
             static async remove(id: string) {
-                const res = delete Collection.data[id];
+                const res = delete pointer.data[name][id];
 
                 await pointer.syncFile();
 
@@ -132,12 +125,12 @@ class Database {
             static async removeAll(o: any, count?: number) {
                 let res: boolean = true;
 
-                for (const key in Collection.data) {
+                for (const key in pointer.data[name]) {
                     if (typeof count === "number" && count <= 0)
                         break;
 
                     // Try delete the object if matches
-                    if (match(o, Collection.data[key]) && !delete Collection.data[key]) {
+                    if (match(o, pointer.data[name][key]) && !delete pointer.data[name][key]) {
                         res = false;
                         break;
                     }
@@ -153,7 +146,7 @@ class Database {
              * @param id 
              */
             static select(id: string): Database.Document<T> {
-                return Collection.data[id];
+                return pointer.data[name][id];
             }
 
             /**
@@ -164,11 +157,11 @@ class Database {
             static find(o: any, count?: number): Database.Document<T>[] {
                 const vals = [];
 
-                for (const key in Collection.data) {
+                for (const key in pointer.data[name]) {
                     if (typeof count === "number" && count <= 0)
                         break;
 
-                    const doc = Collection.data[key];
+                    const doc = pointer.data[name][key];
 
                     // Add to value list
                     if (match(o, doc.data)) {
@@ -198,13 +191,13 @@ class Database {
             static async update(o: any, value: T, rewrite?: boolean) {
                 const doc = this.findOne(o);
 
-                if (!rewrite && typeof Collection.data[doc.id].data === "object")
-                    Object.assign(Collection.data[doc.id].data, value);
+                if (!rewrite && typeof pointer.data[name][doc.id].data === "object")
+                    Object.assign(pointer.data[name][doc.id].data, value);
                 else
-                    Collection.data[doc.id].data = value;
+                    pointer.data[name][doc.id].data = value;
 
                 // Check type
-                Collection.data[doc.id].data = new type(Collection.data[doc.id].data);
+                pointer.data[name][doc.id].data = new type(pointer.data[name][doc.id].data);
 
                 await pointer.syncFile();
             }
@@ -215,19 +208,39 @@ class Database {
              * @param rewrite 
              */
             static async updateID(id: string, value: T, rewrite?: boolean) {
-                if (!rewrite && typeof Collection.data[id].data === "object")
-                    Object.assign(Collection.data[id].data, value);
+                if (!rewrite && typeof pointer.data[name][id].data === "object")
+                    Object.assign(pointer.data[name][id].data, value);
                 else
-                    Collection.data[id].data = value;
+                    pointer.data[name][id].data = value;
 
                 // Check type
-                Collection.data[id].data = new type(Collection.data[id].data);
+                pointer.data[name][id].data = new type(pointer.data[name][id].data);
 
                 await pointer.syncFile();
             }
         }
 
         return Collection;
+    }
+
+    /**
+     * Remove a collection from the database
+     * @param collectionName
+     */
+    async remove(collectionName: string) {
+        delete this.data[collectionName];
+
+        await this.syncFile();
+    }
+
+    /**
+     * Clear the database
+     */
+    async clear() {
+        // @ts-ignore
+        this.data = {};
+
+        await this.syncFile();
     }
 }
 

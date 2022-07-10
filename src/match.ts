@@ -5,7 +5,7 @@
  * @returns 
  */
 function match(a: any, b: any) {
-    if (a === b)
+    if (a == b)
         return true;
 
     else if (typeof a === "object") {
