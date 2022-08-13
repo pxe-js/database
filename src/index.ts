@@ -9,42 +9,54 @@ declare namespace Database {
         data: T;
     }
 
+    export interface Options extends Partial<{
+        path: string;
+        reviver: (this: any, key: string, value: any) => any;
+        replacer?: (this: any, key: string, value: any) => any;
+    }> { }
+
     export interface Collection<T = any> {
         [id: string]: Database.Document<T>;
     }
+}
+
+// Check whether the function is a type created by vlds
+function isType(f: any): f is valids.Type {
+    return f.toString().startsWith("class");
 }
 
 class Database {
     private readonly data: {
         [collectionName: string]: Database.Collection;
     };
+    private readonly path: string;
+    private readonly replacer: Database.Options["replacer"];
 
-    /**
-     * Create a database
-     * @param path 
-     */
-    constructor(public readonly path?: string) {
-        if (!fs.existsSync(path))
+    constructor(opts?: Database.Options) {
+        opts ||= {};
+
+        const { path, reviver } = opts;
+
+        // Parse data
+        if (path && !fs.existsSync(path))
             fs.appendFileSync(path, "{}");
 
-        this.data = path ? JSON.parse(fs.readFileSync(path).toString() ?? "{}") : {};
+        this.data = path ? JSON.parse(fs.readFileSync(path).toString() ?? "{}", reviver) : {};
+
+        // Set properties
+        delete opts.reviver;
+        Object.assign(this, opts);
     }
 
-    /**
-     * Sync the data with the file
-     */
     private async syncFile() {
         if (this.path)
-            await fs.promises.writeFile(this.path, JSON.stringify(this.data));
+            await fs.promises.writeFile(this.path, JSON.stringify(this.data, this.replacer));
     }
 
-    /**
-     * Create a collection
-     * @param name collection name
-     * @param validator document validator
-     */
-    collect<T = any>(name: string, validator: valids.Validator) {
-        const type = valids.type(validator);
+    collect<T = any>(name: string, validator: valids.Validator | valids.Type) {
+        const type = isType(validator)
+            ? validator
+            : valids.type(validator);
 
         const pointer = this;
 
@@ -59,19 +71,11 @@ class Database {
             readonly value: T;
             readonly id: string;
 
-            /**
-             * Create an object and validate it using the validator
-             * @param data 
-             */
             constructor(data: T) {
                 this.value = new type(data);
                 this.id = hash(String(Date.now()) + JSON.stringify(pointer.data[name]) + name);
             }
 
-            /**
-             * Save or resave the object to the database
-             * @returns the object value
-             */
             async save() {
                 pointer.data[name][this.id] = {
                     id: this.id,
@@ -83,45 +87,30 @@ class Database {
                 return this.value;
             }
 
-            /**
-             * Delete the object from the database
-             * @returns true if delete successfully
-             */
             async del() {
                 const res = delete pointer.data[name][this.id];
 
-                await pointer.syncFile();
+                if (res)
+                    await pointer.syncFile();
 
                 return res;
             }
 
-            /**
-             * Set the value
-             * @param value 
-             */
             async setValue(value: T) {
                 // @ts-ignore
                 this.value = new type(value);
                 await this.save();
             }
 
-            /**
-             * Delete an object by its id
-             * @param id 
-             */
             static async remove(id: string) {
                 const res = delete pointer.data[name][id];
 
-                await pointer.syncFile();
+                if (res)
+                    await pointer.syncFile();
 
                 return res;
             }
 
-            /**
-             * Delete all objects that match o in the collection
-             * @param o 
-             * @param count 
-             */
             static async removeAll(o: any, count?: number) {
                 let res: boolean = true;
 
@@ -141,19 +130,10 @@ class Database {
                 return res;
             }
 
-            /**
-             * Select the document with the id
-             * @param id 
-             */
             static select(id: string): Database.Document<T> {
                 return pointer.data[name][id];
             }
 
-            /**
-             * Find by object match
-             * @param o 
-             * @param count 
-             */
             static find(o: any, count?: number): Database.Document<T>[] {
                 const vals = [];
 
@@ -174,20 +154,10 @@ class Database {
                 return vals;
             }
 
-            /**
-             * Find one by object match
-             * @param o 
-             */
             static findOne(o: any) {
                 return this.find(o, 1)[0];
             }
 
-            /**
-             * Update the first matched object value with new value
-             * @param o 
-             * @param value 
-             * @param rewrite
-             */
             static async update(o: any, value: T, rewrite?: boolean) {
                 const doc = this.findOne(o);
 
@@ -202,11 +172,6 @@ class Database {
                 await pointer.syncFile();
             }
 
-            /**
-             * Update the object by a new value by its id
-             * @param id 
-             * @param rewrite 
-             */
             static async updateID(id: string, value: T, rewrite?: boolean) {
                 if (!rewrite && typeof pointer.data[name][id].data === "object")
                     Object.assign(pointer.data[name][id].data, value);
@@ -218,24 +183,23 @@ class Database {
 
                 await pointer.syncFile();
             }
+
+            static async clear() {
+                pointer.data[name] = {};
+
+                await pointer.syncFile();
+            }
         }
 
         return Collection;
     }
 
-    /**
-     * Remove a collection from the database
-     * @param collectionName
-     */
     async remove(collectionName: string) {
         delete this.data[collectionName];
 
         await this.syncFile();
     }
 
-    /**
-     * Clear the database
-     */
     async clear() {
         // @ts-ignore
         this.data = {};
