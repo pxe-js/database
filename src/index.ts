@@ -12,12 +12,16 @@ declare namespace Database {
     export interface Options extends Partial<{
         path: string;
         reviver: (this: any, key: string, value: any) => any;
-        replacer?: (this: any, key: string, value: any) => any;
+        replacer: (this: any, key: string, value: any) => any;
     }> { }
 
     export interface Collection<T = any> {
         [id: string]: Database.Document<T>;
     }
+}
+
+function hash(d: string) {
+    return createHash("sha384").update(d).digest("hex");
 }
 
 // Check whether the function is a type created by vlds
@@ -62,10 +66,6 @@ class Database {
 
         if (!pointer.data[name])
             pointer.data[name] = {} as Database.Collection<T>;
-
-        function hash(d: string) {
-            return createHash("sha384").update(d).digest("hex");
-        }
 
         const Collection = class {
             readonly value: T;
